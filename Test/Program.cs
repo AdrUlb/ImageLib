@@ -1,5 +1,5 @@
-﻿using ManagedSDL2;
-using System.Drawing;
+﻿using ImageLib;
+using ManagedSDL2;
 
 namespace Test
 {
@@ -7,6 +7,8 @@ namespace Test
 	{
 		static void Main(string[] args)
 		{
+			var image = new Image("test.png");
+
 			var window = new SDL.Window("Test", SDL.WindowPos.Undefined, SDL.WindowPos.Undefined, 300, 300);
 			var renderer = new SDL.Renderer(window);
 
@@ -23,6 +25,7 @@ namespace Test
 				SDL.ProcessEvents();
 
 				renderer.Clear();
+
 				renderer.Present();
 			}
 
