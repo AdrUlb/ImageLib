@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -27,13 +28,22 @@ namespace ImageLib
 
 		enum FilterMethod : byte
 		{
-			PredictNextNeighbor
+			Prediction
 		}
 
 		enum InterlaceMethod : byte
 		{
 			None = 0,
 			Adam7 = 1
+		}
+
+		enum ScanlineFilter : byte
+		{
+			None = 0,
+			Sub = 1,
+			Up = 2,
+			Average = 3,
+			Paeth = 4
 		}
 
 		readonly struct Chunk
@@ -94,7 +104,7 @@ namespace ImageLib
 			return new Chunk(type, data, crc);
 		}
 
-		public static void DecodeImage(Stream s)
+		public static Color[][] DecodeImage(Stream s)
 		{
 			Console.WriteLine($"Decoding PNG");
 
@@ -142,9 +152,25 @@ namespace ImageLib
 				switch (chunk.Type)
 				{
 					case "IHDR":
-						throw new Exception("Duplicate IHDR chunk");
+						throw new Exception("    Duplicate IHDR chunk");
 					case "IDAT":
 						compressedImageData.Write(chunk.Data.ToArray(), 0, chunk.Data.Count);
+						break;
+					case "tEXt":
+						{
+							data = new Span<byte>(chunk.Data.ToArray());
+
+							for (var i = 0; i < data.Length; i++)
+							{
+								if (data[i] == 0)
+								{
+									var key = data.Slice(0, i);
+									var value = data.Slice(i);
+									Console.WriteLine($"    {Encoding.Latin1.GetString(key)}: {Encoding.Latin1.GetString(value)}");
+									break;
+								}
+							}
+						}
 						break;
 					case "IEND":
 						end = true;
@@ -172,14 +198,116 @@ namespace ImageLib
 						var constructor = typeof(DeflateStream).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, argTypes, null)!;
 						ds = (DeflateStream)constructor.Invoke(args);
 					}
-
 					ds.CopyTo(imageData);
 					ds.Dispose();
 					break;
 				default:
 					throw new NotImplementedException("Compression method not implemented");
 			}
+
+			var bytesPerPixel = 0;
+
+			switch (colorType)
+			{
+				case ColorType.RGB:
+					bytesPerPixel = 3;
+					break;
+				case ColorType.RGBA:
+					bytesPerPixel = 4;
+					break;
+				default:
+					throw new NotImplementedException("Color type not implemented");
+			}
+
+			var scanlineWidth = width * bytesPerPixel + 1;
+			var expectedSize = scanlineWidth * height;
+
+			Console.WriteLine($"    Expected Decompressed size: {expectedSize} bytes");
 			Console.WriteLine($"    Decompressed size: {imageData.Length} bytes");
+
+			if (expectedSize != imageData.Length)
+				throw new FormatException("Image data size mismatch");
+
+			Console.WriteLine("  Applying scanline filters");
+
+			var imagePixels = new Color[height][];
+
+			switch (filterMethod)
+			{
+				case FilterMethod.Prediction:
+					for (var y = 0; y < height; y++)
+					{
+						var lineStart = y * scanlineWidth;
+						imageData.Position = lineStart;
+						var lineFilter = (ScanlineFilter)imageData.ReadByte();
+
+						var linePixels = new Color[width];
+						imagePixels[y] = linePixels;
+
+						var pixelLeft = Color.FromArgb(0, 0, 0, 0);
+
+						switch (lineFilter)
+						{
+							case ScanlineFilter.Sub:
+								for (var x = 0; x < width; x++)
+								{
+									var r = imageData.ReadByte();
+									var g = imageData.ReadByte();
+									var b = imageData.ReadByte();
+									var a = bytesPerPixel > 3 ? imageData.ReadByte() : 255;
+
+									r += pixelLeft.R;
+									g += pixelLeft.G;
+									b += pixelLeft.B;
+									a += pixelLeft.A;
+
+									r %= 255;
+									g %= 255;
+									b %= 255;
+									a %= 255;
+
+									var pixel = Color.FromArgb(a, r, g, b);
+									linePixels[x] = pixel;
+									pixelLeft = pixel;
+								}
+								break;
+							case ScanlineFilter.Up:
+								for (var x = 0; x < width; x++)
+								{
+									var r = imageData.ReadByte();
+									var g = imageData.ReadByte();
+									var b = imageData.ReadByte();
+									var a = bytesPerPixel > 3 ? imageData.ReadByte() : 255;
+
+									var pixelUp = y > 0 ? imagePixels[y - 1][x] : Color.FromArgb(0, 0, 0, 0);
+
+									r += pixelUp.R;
+									g += pixelUp.R;
+									b += pixelUp.R;
+									a += pixelUp.R;
+
+									r %= 255;
+									g %= 255;
+									b %= 255;
+									a %= 255;
+
+									var pixel = Color.FromArgb(a, r, g, b);
+									linePixels[x] = pixel;
+									pixelLeft = pixel;
+								}
+								break;
+							default:
+								Console.WriteLine($"    WARNING: Unknown scanline filter {lineFilter} for line {y + 1}");
+								break;
+						}
+					}
+					break;
+				default:
+					throw new NotImplementedException($"Filter method {filterMethod} not implemented");
+			}
+			Console.WriteLine(imageData.ReadByte() == -1);
+
+			return imagePixels;
 		}
 	}
 }

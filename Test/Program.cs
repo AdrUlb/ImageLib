@@ -7,9 +7,9 @@ namespace Test
 	{
 		static void Main()
 		{
-			var image = new Image("gradient.png");
+			var image = new Image("shapes.png");
 
-			var window = new SDL.Window("Test", SDL.WindowPos.Undefined, SDL.WindowPos.Undefined, 300, 300);
+			var window = new SDL.Window("Test", SDL.WindowPos.Undefined, SDL.WindowPos.Undefined, image.Width, image.Height);
 			var renderer = new SDL.Renderer(window);
 
 			var running = true;
@@ -25,6 +25,14 @@ namespace Test
 				SDL.ProcessEvents();
 
 				renderer.Clear();
+
+				for (var y = 0; y < image.Height; y++)
+				{
+					for (var x = 0; x < image.Width; x++)
+					{
+						renderer.DrawPoint(image.GetPixel(x, y), x, y);
+					}
+				}
 
 				renderer.Present();
 			}
