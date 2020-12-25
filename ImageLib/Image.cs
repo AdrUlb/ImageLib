@@ -8,7 +8,7 @@ namespace ImageLib
 		public int Width { get; }
 		public int Height { get; }
 
-		private void Init(Stream s)
+		private static void Init(Stream s)
 		{
 			if (PNG.ValidateHeader(s))
 			{
