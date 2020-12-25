@@ -2,7 +2,9 @@
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace ImageLib
@@ -105,13 +107,18 @@ namespace ImageLib
 			return new Chunk(type, data, crc);
 		}
 
-		private static IHDRChunkData ParseIHDRChunk(Chunk chunk)
+		public static void DecodeImage(Stream s)
 		{
-			if (chunk.Type != "IHDR" || chunk.Data.Count != 13)
-				throw new FormatException("Tried parsing a malformed IHDR chunk");
+			Console.WriteLine($"Decoding PNG");
 
+			var end = false;
+
+			var chunk = ReadChunk(s);
+			if (chunk.Type != "IHDR" || chunk.Data.Count != 13)
+				throw new FormatException("PNG file invalid or corrupted");
+
+			Console.WriteLine($"  Read chunk: {chunk.Type} ({chunk.Data.Count} bytes)");
 			var data = new Span<byte>(chunk.Data.ToArray());
-			//var data = chunk.Data.ToList();
 
 			var width = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(0, 4));
 			var height = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(4, 4));
@@ -121,42 +128,75 @@ namespace ImageLib
 			var filterMethod = (FilterMethod)data[11];
 			var interlaceMethod = (InterlaceMethod)data[12];
 
-			return new IHDRChunkData(width, height, bitDepth, colorType, compressionMethod, filterMethod, interlaceMethod);
-		}
+			if (!Enum.IsDefined(typeof(CompressionMethod), compressionMethod))
+				throw new FormatException("Invalid compression method");
 
-		public static void DecodeImage(Stream s)
-		{
-			Console.WriteLine($"Decoding PNG");
+			if (!Enum.IsDefined(typeof(FilterMethod), filterMethod))
+				throw new FormatException("Invalid filter method");
 
-			var end = false;
+			if (!Enum.IsDefined(typeof(InterlaceMethod), interlaceMethod))
+				throw new FormatException("Invalid interlace method");
+
+			Console.WriteLine($"    Width: {width}");
+			Console.WriteLine($"    Height: {height}");
+			Console.WriteLine($"    Bit depth: {bitDepth}");
+			Console.WriteLine($"    Color type: {colorType}");
+			Console.WriteLine($"    Compression method: {compressionMethod}");
+			Console.WriteLine($"    Filter method: {filterMethod}");
+			Console.WriteLine($"    Interlace method: {interlaceMethod}");
+
+			using var compressedImageData = new MemoryStream();
 
 			while (!end)
 			{
-				var chunk = ReadChunk(s);
-				Console.WriteLine($"  Chunk: {chunk.Type}");
-				
+				chunk = ReadChunk(s);
+				Console.WriteLine($"  Read chunk: {chunk.Type} ({chunk.Data.Count} bytes)");
+
 				switch (chunk.Type)
 				{
 					case "IHDR":
-						{
-							var data = ParseIHDRChunk(chunk);
-							Console.WriteLine($"    Width: {data.Width}");
-							Console.WriteLine($"    Height: {data.Height}");
-							Console.WriteLine($"    Bit depth: {data.BitDepth}");
-							Console.WriteLine($"    Color type: {data.ColorType}");
-							Console.WriteLine($"    Compression method: {data.CompressionMethod}");
-							Console.WriteLine($"    Filter method: {data.FilterMethod}");
-							Console.WriteLine($"    Interlace method: {data.InterlaceMethod}");
-						}
+						throw new Exception("Duplicate IHDR chunk");
+					case "IDAT":
+						compressedImageData.Write(chunk.Data.ToArray(), 0, chunk.Data.Count);
 						break;
 					case "IEND":
 						end = true;
 						break;
 					default:
-						Console.WriteLine("    [UNKNOWN CHUNK FORMAT]");
+						Console.WriteLine("    [UNKNOWN CHUNK TYPE]");
 						break;
 				}
 			}
+
+			Console.WriteLine("  Decompressing image data");
+			Console.WriteLine($"    Compressed size: {compressedImageData.Length} bytes");
+
+			using var imageData = new MemoryStream();
+
+			switch (compressionMethod)
+			{
+				case CompressionMethod.Deflate:
+					DeflateStream ds;
+					compressedImageData.Position = 0;
+					{
+						// This is doing some weird ass janky shit to get access to an internal DeflateStream constructor
+						var args = new object[] { compressedImageData, CompressionMode.Decompress, false, 15, -1 };
+						var argTypes = new Type[] { typeof(Stream), typeof(CompressionMode), typeof(bool), typeof(int), typeof(long) };
+						var constructor = typeof(DeflateStream).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, argTypes, null);
+
+						if (constructor == null)
+							throw new Exception("Failed to get internal DeflateStream constructor");
+
+						ds = (DeflateStream)constructor.Invoke(args);
+					}
+
+					ds.CopyTo(imageData);
+					ds.Dispose();
+					break;
+				default:
+					throw new NotImplementedException("Compression method not implemented");
+			}
+			Console.WriteLine($"    Decompressed size: {imageData.Length} bytes");
 		}
 	}
 }
