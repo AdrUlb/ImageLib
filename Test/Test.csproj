@@ -14,7 +14,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Update="test.png">
+	  <None Update="gradient.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="shapes.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
 	</ItemGroup>

@@ -7,7 +7,7 @@ namespace Test
 	{
 		static void Main()
 		{
-			var image = new Image("test.png");
+			var image = new Image("gradient.png");
 
 			var window = new SDL.Window("Test", SDL.WindowPos.Undefined, SDL.WindowPos.Undefined, 300, 300);
 			var renderer = new SDL.Renderer(window);

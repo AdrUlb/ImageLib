@@ -11,6 +11,15 @@ namespace ImageLib
 {
 	public static class PNG
 	{
+		enum ColorType : byte
+		{
+			Grayscale = 0,
+			RGB = 2,
+			Indexed = 3,
+			GrayscaleAlpha = 4,
+			RGBA = 6
+		}
+
 		enum CompressionMethod : byte
 		{
 			Deflate = 0
@@ -18,7 +27,7 @@ namespace ImageLib
 
 		enum FilterMethod : byte
 		{
-			Prediction = 0
+			PredictNextNeighbor
 		}
 
 		enum InterlaceMethod : byte
@@ -38,28 +47,6 @@ namespace ImageLib
 				Type = type;
 				Data = data.ToArray();
 				CRC = crc.ToArray();
-			}
-		}
-
-		readonly struct IHDRChunkData
-		{
-			public readonly uint Width;
-			public readonly uint Height;
-			public readonly byte BitDepth;
-			public readonly byte ColorType;
-			public readonly CompressionMethod CompressionMethod;
-			public readonly FilterMethod FilterMethod;
-			public readonly InterlaceMethod InterlaceMethod;
-
-			public IHDRChunkData(uint width, uint height, byte bitDepth, byte colorType, CompressionMethod compressionMethod, FilterMethod filterMethod, InterlaceMethod interlaceMethod)
-			{
-				Width = width;
-				Height = height;
-				BitDepth = bitDepth;
-				ColorType = colorType;
-				CompressionMethod = compressionMethod;
-				FilterMethod = filterMethod;
-				InterlaceMethod = interlaceMethod;
 			}
 		}
 
@@ -123,7 +110,7 @@ namespace ImageLib
 			var width = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(0, 4));
 			var height = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(4, 4));
 			var bitDepth = data[8];
-			var colorType = data[9];
+			var colorType = (ColorType)data[9];
 			var compressionMethod = (CompressionMethod)data[10];
 			var filterMethod = (FilterMethod)data[11];
 			var interlaceMethod = (InterlaceMethod)data[12];
@@ -182,11 +169,7 @@ namespace ImageLib
 						// This is doing some weird ass janky shit to get access to an internal DeflateStream constructor
 						var args = new object[] { compressedImageData, CompressionMode.Decompress, false, 15, -1 };
 						var argTypes = new Type[] { typeof(Stream), typeof(CompressionMode), typeof(bool), typeof(int), typeof(long) };
-						var constructor = typeof(DeflateStream).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, argTypes, null);
-
-						if (constructor == null)
-							throw new Exception("Failed to get internal DeflateStream constructor");
-
+						var constructor = typeof(DeflateStream).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, argTypes, null)!;
 						ds = (DeflateStream)constructor.Invoke(args);
 					}
 
