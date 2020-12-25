@@ -31,11 +31,11 @@ namespace ImageLib
 			public readonly IReadOnlyCollection<byte> Data;
 			public readonly IReadOnlyCollection<byte> CRC;
 
-			public Chunk(string type, byte[] data, byte[] crc)
+			public Chunk(string type, ReadOnlySpan<byte> data, Span<byte> crc)
 			{
 				Type = type;
-				Data = data;
-				CRC = crc;
+				Data = data.ToArray();
+				CRC = crc.ToArray();
 			}
 		}
 
@@ -82,23 +82,25 @@ namespace ImageLib
 
 		private static Chunk ReadChunk(Stream s)
 		{
-			var sizeBytes = new byte[4];
-			if (s.Read(sizeBytes, 0, sizeBytes.Length) != sizeBytes.Length)
-				throw new EndOfStreamException("Unexpected end of stream");
-			var size = BinaryPrimitives.ReadUInt32BigEndian(sizeBytes);
+			void ReadBytesCheckEOS(Span<byte> span)
+			{
+				if (s.Read(span) != span.Length)
+					throw new EndOfStreamException("Unexpected end of stream");
+			}
 
-			var typeBytes = new byte[4];
-			if (s.Read(typeBytes, 0, typeBytes.Length) != typeBytes.Length)
-				throw new EndOfStreamException("Unexpected end of stream");
+			Span<byte> sizeBytes = stackalloc byte[4];
+			ReadBytesCheckEOS(sizeBytes);
+			var size = BinaryPrimitives.ReadInt32BigEndian(sizeBytes);
+
+			Span<byte> typeBytes = stackalloc byte[4];
+			ReadBytesCheckEOS(typeBytes);
 			var type = Encoding.ASCII.GetString(typeBytes);
 
-			var data = new byte[size];
-			if (s.Read(data, 0, data.Length) != data.Length)
-				throw new EndOfStreamException("Unexpected end of stream");
+			Span<byte> data = stackalloc byte[size];
+			ReadBytesCheckEOS(data);
 
-			var crc = new byte[4];
-			if (s.Read(crc, 0, crc.Length) != crc.Length)
-				throw new EndOfStreamException("Unexpected end of stream");
+			Span<byte> crc = stackalloc byte[4];
+			ReadBytesCheckEOS(crc);
 
 			return new Chunk(type, data, crc);
 		}
@@ -108,10 +110,11 @@ namespace ImageLib
 			if (chunk.Type != "IHDR" || chunk.Data.Count != 13)
 				throw new FormatException("Tried parsing a malformed IHDR chunk");
 
-			var data = chunk.Data.ToList();
+			var data = new Span<byte>(chunk.Data.ToArray());
+			//var data = chunk.Data.ToList();
 
-			var width = BinaryPrimitives.ReadUInt32BigEndian(data.GetRange(0, 4).ToArray());
-			var height = BinaryPrimitives.ReadUInt32BigEndian(data.GetRange(4, 4).ToArray());
+			var width = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(0, 4));
+			var height = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(4, 4));
 			var bitDepth = data[8];
 			var colorType = data[9];
 			var compressionMethod = (CompressionMethod)data[10];
@@ -129,25 +132,21 @@ namespace ImageLib
 
 			while (!end)
 			{
-				Console.WriteLine("  Chunk");
 				var chunk = ReadChunk(s);
-				Console.WriteLine($"    Size: {chunk.Data.Count}");
-				Console.WriteLine($"    Type: {chunk.Type}");
-				Console.WriteLine($"    CRC: 0x{BinaryPrimitives.ReadUInt32BigEndian(chunk.CRC.ToArray()):X4}");
+				Console.WriteLine($"  Chunk: {chunk.Type}");
 				
 				switch (chunk.Type)
 				{
 					case "IHDR":
 						{
 							var data = ParseIHDRChunk(chunk);
-							Console.WriteLine("    Data");
-							Console.WriteLine($"      Width: {data.Width}");
-							Console.WriteLine($"      Height: {data.Height}");
-							Console.WriteLine($"      Bit depth: {data.BitDepth}");
-							Console.WriteLine($"      Color type: {data.ColorType}");
-							Console.WriteLine($"      Compression method: {data.CompressionMethod}");
-							Console.WriteLine($"      Filter method: {data.FilterMethod}");
-							Console.WriteLine($"      Interlace method: {data.InterlaceMethod}");
+							Console.WriteLine($"    Width: {data.Width}");
+							Console.WriteLine($"    Height: {data.Height}");
+							Console.WriteLine($"    Bit depth: {data.BitDepth}");
+							Console.WriteLine($"    Color type: {data.ColorType}");
+							Console.WriteLine($"    Compression method: {data.CompressionMethod}");
+							Console.WriteLine($"    Filter method: {data.FilterMethod}");
+							Console.WriteLine($"    Interlace method: {data.InterlaceMethod}");
 						}
 						break;
 					case "IEND":
