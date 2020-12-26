@@ -106,15 +106,12 @@ namespace ImageLib
 
 		public static Color[][] DecodeImage(Stream s)
 		{
-			Console.WriteLine($"Decoding PNG");
-
 			var end = false;
 
 			var chunk = ReadChunk(s);
 			if (chunk.Type != "IHDR" || chunk.Data.Count != 13)
 				throw new FormatException("PNG file invalid or corrupted");
 
-			Console.WriteLine($"  Read chunk: {chunk.Type} ({chunk.Data.Count} bytes)");
 			var data = new Span<byte>(chunk.Data.ToArray());
 
 			var width = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(0, 4));
@@ -134,55 +131,28 @@ namespace ImageLib
 			if (!Enum.IsDefined(typeof(InterlaceMethod), interlaceMethod))
 				throw new FormatException("Invalid interlace method");
 
-			Console.WriteLine($"    Width: {width}");
-			Console.WriteLine($"    Height: {height}");
-			Console.WriteLine($"    Bit depth: {bitDepth}");
-			Console.WriteLine($"    Color type: {colorType}");
-			Console.WriteLine($"    Compression method: {compressionMethod}");
-			Console.WriteLine($"    Filter method: {filterMethod}");
-			Console.WriteLine($"    Interlace method: {interlaceMethod}");
-
 			using var compressedImageData = new MemoryStream();
 
 			while (!end)
 			{
 				chunk = ReadChunk(s);
-				Console.WriteLine($"  Read chunk: {chunk.Type} ({chunk.Data.Count} bytes)");
 
 				switch (chunk.Type)
 				{
 					case "IHDR":
-						throw new Exception("    Duplicate IHDR chunk");
+						throw new Exception("Duplicate IHDR chunk");
+					case "PLTE":
+						throw new Exception("Images with palette not supported");
 					case "IDAT":
 						compressedImageData.Write(chunk.Data.ToArray(), 0, chunk.Data.Count);
-						break;
-					case "tEXt":
-						{
-							data = new Span<byte>(chunk.Data.ToArray());
-
-							for (var i = 0; i < data.Length; i++)
-							{
-								if (data[i] == 0)
-								{
-									var key = data[0..i];
-									var value = data[i..];
-									Console.WriteLine($"    {Encoding.Latin1.GetString(key)}: {Encoding.Latin1.GetString(value)}");
-									break;
-								}
-							}
-						}
 						break;
 					case "IEND":
 						end = true;
 						break;
 					default:
-						Console.WriteLine("    [UNKNOWN CHUNK TYPE]");
 						break;
 				}
 			}
-
-			Console.WriteLine("  Decompressing image data");
-			Console.WriteLine($"    Compressed size: {compressedImageData.Length} bytes");
 
 			using var imageData = new MemoryStream();
 
@@ -222,13 +192,8 @@ namespace ImageLib
 			var scanlineWidth = width * bytesPerPixel + 1;
 			var expectedSize = scanlineWidth * height;
 
-			Console.WriteLine($"    Expected Decompressed size: {expectedSize} bytes");
-			Console.WriteLine($"    Decompressed size: {imageData.Length} bytes");
-
 			if (expectedSize != imageData.Length)
 				throw new FormatException("Image data size mismatch");
-
-			Console.WriteLine("  Applying scanline filters");
 
 			var imagePixels = new Color[height][];
 
@@ -297,6 +262,31 @@ namespace ImageLib
 									g += pixelUp.G;
 									b += pixelUp.B;
 									a += pixelUp.A;
+
+									r %= 256;
+									g %= 256;
+									b %= 256;
+									a %= 256;
+
+									var pixel = Color.FromArgb(a, r, g, b);
+									linePixels[x] = pixel;
+									pixelLeft = pixel;
+								}
+								break;
+							case ScanlineFilter.Average:
+								for (var x = 0; x < width; x++)
+								{
+									var r = imageData.ReadByte();
+									var g = imageData.ReadByte();
+									var b = imageData.ReadByte();
+									var a = bytesPerPixel > 3 ? imageData.ReadByte() : 255;
+
+									var pixelUp = y > 0 ? imagePixels[y - 1][x] : Color.FromArgb(0, 0, 0, 0);
+
+									r += (pixelUp.R + pixelLeft.R) / 2;
+									g += (pixelUp.G + pixelLeft.G) / 2;
+									b += (pixelUp.B + pixelLeft.B) / 2;
+									a += (pixelUp.A + pixelLeft.A) / 2;
 
 									r %= 256;
 									g %= 256;
