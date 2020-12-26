@@ -164,8 +164,8 @@ namespace ImageLib
 							{
 								if (data[i] == 0)
 								{
-									var key = data.Slice(0, i);
-									var value = data.Slice(i);
+									var key = data[0..i];
+									var value = data[i..];
 									Console.WriteLine($"    {Encoding.Latin1.GetString(key)}: {Encoding.Latin1.GetString(value)}");
 									break;
 								}
@@ -248,6 +248,18 @@ namespace ImageLib
 
 						switch (lineFilter)
 						{
+							case ScanlineFilter.None:
+								for (var x = 0; x < width; x++)
+								{
+									var r = imageData.ReadByte();
+									var g = imageData.ReadByte();
+									var b = imageData.ReadByte();
+									var a = bytesPerPixel > 3 ? imageData.ReadByte() : 255;
+
+									var pixel = Color.FromArgb(a, r, g, b);
+									linePixels[x] = pixel;
+								}
+								break;
 							case ScanlineFilter.Sub:
 								for (var x = 0; x < width; x++)
 								{
@@ -261,10 +273,10 @@ namespace ImageLib
 									b += pixelLeft.B;
 									a += pixelLeft.A;
 
-									r %= 255;
-									g %= 255;
-									b %= 255;
-									a %= 255;
+									r %= 256;
+									g %= 256;
+									b %= 256;
+									a %= 256;
 
 									var pixel = Color.FromArgb(a, r, g, b);
 									linePixels[x] = pixel;
@@ -282,14 +294,92 @@ namespace ImageLib
 									var pixelUp = y > 0 ? imagePixels[y - 1][x] : Color.FromArgb(0, 0, 0, 0);
 
 									r += pixelUp.R;
-									g += pixelUp.R;
-									b += pixelUp.R;
-									a += pixelUp.R;
+									g += pixelUp.G;
+									b += pixelUp.B;
+									a += pixelUp.A;
 
-									r %= 255;
-									g %= 255;
-									b %= 255;
-									a %= 255;
+									r %= 256;
+									g %= 256;
+									b %= 256;
+									a %= 256;
+
+									var pixel = Color.FromArgb(a, r, g, b);
+									linePixels[x] = pixel;
+									pixelLeft = pixel;
+								}
+								break;
+							case ScanlineFilter.Paeth:
+								for (var x = 0; x < width; x++)
+								{
+									var pixelUp = y > 0 ? imagePixels[y - 1][x] : Color.FromArgb(0, 0, 0, 0);
+									var pixelUpperLeft = y > 0 && x > 0 ? imagePixels[y - 1][x - 1] : Color.FromArgb(0, 0, 0, 0);
+
+									var r = imageData.ReadByte();
+									var g = imageData.ReadByte();
+									var b = imageData.ReadByte();
+									var a = bytesPerPixel > 3 ? imageData.ReadByte() : 255;
+
+									for (var i = 0; i < 4; i++)
+									{
+										var left = i switch
+										{
+											0 => pixelLeft.R,
+											1 => pixelLeft.G,
+											2 => pixelLeft.B,
+											3 => pixelLeft.A,
+											_ => throw new InvalidOperationException()
+										};
+
+										var up = i switch
+										{
+											0 => pixelUp.R,
+											1 => pixelUp.G,
+											2 => pixelUp.B,
+											3 => pixelUp.A,
+											_ => throw new InvalidOperationException()
+										};
+
+										var upperLeft = i switch
+										{
+											0 => pixelUpperLeft.R,
+											1 => pixelUpperLeft.G,
+											2 => pixelUpperLeft.B,
+											3 => pixelUpperLeft.A,
+											_ => throw new InvalidOperationException()
+										};
+
+										var current = i switch
+										{
+											0 => r,
+											1 => g,
+											2 => b,
+											3 => a,
+											_ => throw new InvalidOperationException()
+										};
+
+										var p = left + up - upperLeft;
+
+										var pa = Math.Abs(p - left);
+										var pb = Math.Abs(p - up);
+										var pc = Math.Abs(p - upperLeft);
+
+										if (pa <= pb && pa <= pc)
+											current += left;
+										else if (pb <= pc)
+											current += up;
+										else
+											current += upperLeft;
+
+										current %= 256;
+
+										switch (i)
+										{
+											case 0: r = current; break;
+											case 1: g = current; break;
+											case 2: b = current; break;
+											case 3: a = current; break;
+										}
+									}
 
 									var pixel = Color.FromArgb(a, r, g, b);
 									linePixels[x] = pixel;
@@ -305,7 +395,6 @@ namespace ImageLib
 				default:
 					throw new NotImplementedException($"Filter method {filterMethod} not implemented");
 			}
-			Console.WriteLine(imageData.ReadByte() == -1);
 
 			return imagePixels;
 		}

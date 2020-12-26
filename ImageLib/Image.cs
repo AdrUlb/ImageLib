@@ -9,7 +9,7 @@ namespace ImageLib
 		public int Width { get; private set; } = 0;
 		public int Height { get; private set; } = 0;
 
-		Color[][] pixels;
+		readonly Color[][] pixels;
 
 		private Color[][] Init(Stream s)
 		{
