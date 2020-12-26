@@ -43,7 +43,7 @@ namespace ImageLib
 		{
 			get
 			{
-				if (x < 0 || y < 0 || x >= Width || y >= Width)
+				if (x < 0 || y < 0 || x >= Width || y >= Height)
 					throw new IndexOutOfRangeException("Specified coordinates outside of bounds");
 
 				return pixels[y][x];
@@ -51,7 +51,7 @@ namespace ImageLib
 
 			set
 			{
-				if (x < 0 || y < 0 || x >= Width || y >= Width)
+				if (x < 0 || y < 0 || x >= Width || y >= Height)
 					throw new IndexOutOfRangeException("Specified coordinates outside of bounds");
 
 				pixels[y][x] = value;
