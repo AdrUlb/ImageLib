@@ -39,9 +39,23 @@ namespace ImageLib
 			pixels = Init(fs);
 		}
 
-		public Color GetPixel(int x, int y)
+		public Color this[int x, int y]
 		{
-			return pixels[y][x];
+			get
+			{
+				if (x < 0 || y < 0 || x >= Width || y >= Width)
+					throw new IndexOutOfRangeException("Specified coordinates outside of bounds");
+
+				return pixels[y][x];
+			}
+
+			set
+			{
+				if (x < 0 || y < 0 || x >= Width || y >= Width)
+					throw new IndexOutOfRangeException("Specified coordinates outside of bounds");
+
+				pixels[y][x] = value;
+			}
 		}
 	}
 }
